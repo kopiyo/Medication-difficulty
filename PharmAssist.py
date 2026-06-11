@@ -1,9 +1,10 @@
 """
-PharmAssist — Medication Management Difficulty Risk Screener
+PharmAssist — Medication Burden Risk Screener
 Compact single-page layout — 4 columns, no scrolling
 """
 
 import streamlit as st
+import json
 import numpy as np
 import pandas as pd
 import joblib
@@ -142,28 +143,51 @@ st.markdown("""
 
     footer { visibility:hidden; }
     #MainMenu { visibility:hidden; }
-    header[data-testid="stHeader"] { visibility:hidden; }
-    [data-testid="stToolbar"] { display:none; }
-    .stToolbar { display:none; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── LOAD MODEL ────────────────────────────────────────────────────
-@st.cache_resource
-def load_model():
+# ── MODEL METADATA ─────────────────────────────────────────────────
+MODEL_METADATA_FILE = 'model_metadata.json'
+
+@st.cache_data
+def load_metadata():
     try:
-        return joblib.load('lr_model.pkl'), joblib.load('scaler.pkl'), True
+        with open(MODEL_METADATA_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
     except FileNotFoundError:
-        return None, None, False
+        return None
 
-model, scaler, model_loaded = load_model()
+metadata = load_metadata() or {}
 
-PREDICTORS = [
+PREDICTORS = metadata.get('feature_names', [
     'NumRx','NumOTC','NumHerbal','NumHealthProb','RateHealth','HospLastYear',
     'Fin_Hardship','Transport','Side_Effects','Social_Support','Fam_Friend',
-    'Age','Education','HouseIncome','RuralUrban',
-    'Total_Meds','Barrier_Score','Support_Score','Health_Score'
-]
+    'Age','Education','HouseIncome','RuralUrban'
+])
+
+MODEL_INFO = metadata.get('models', {
+    'LogisticRegression': {'file': 'lr_pipeline.pkl', 'test_recall': None, 'test_roc_auc': None},
+    'SVM': {'file': 'svm_pipeline.pkl', 'test_recall': None, 'test_roc_auc': None}
+})
+
+OUTCOME_THRESHOLD_PERCENTILE = metadata.get('outcome_threshold_percentile', 80)
+CLASSIFIER_DECISION_THRESHOLD = metadata.get('classification_threshold', 0.50)
+MODERATE_RISK_THRESHOLD = metadata.get('moderate_risk_threshold', 0.30)
+
+@st.cache_resource
+def load_pipelines():
+    pipelines = {}
+    loaded = True
+    missing = []
+    for name, info in MODEL_INFO.items():
+        try:
+            pipelines[name] = joblib.load(info['file'])
+        except FileNotFoundError:
+            loaded = False
+            missing.append(info['file'])
+    return pipelines, loaded, missing
+
+pipelines, pipelines_loaded, missing_files = load_pipelines()
 LABEL_MAP = {
     'NumRx':'Prescription Drugs','NumOTC':'OTC Medications',
     'NumHerbal':'Herbal Supplements','NumHealthProb':'Health Problems',
@@ -208,12 +232,13 @@ REC_DEFINITIONS = {
     "Side Effects Concern":   "Conduct a thorough adverse drug reaction (ADR) review. Consider alternative formulations (extended-release, topical, etc.), dosing schedule modifications, or therapeutic substitutions. Document all reported adverse effects for the prescriber.",
     "Family/Friend Reliance": "Engage the patient's primary caregiver or family member in the counseling session. Provide written medication schedules, pill organizers, and clear adherence aids. Ensure caregiver understands each medication's purpose and instructions.",
     "Poly-pharmacy":          "A total medication burden of 7+ daily medications significantly increases the risk of drug interactions, ADRs, and regimen complexity-driven non-adherence. Conduct a comprehensive medication review for deprescribing opportunities and duplicate therapies. Recommend medication synchronization to align all refills to a single pickup date.",
-    "Younger Patient":        "Patients aged 18–44 in this dataset showed higher perceived medication management difficulty despite lower comorbidity burdens. Provide targeted health literacy education, digital adherence tools (apps, pill reminders), and motivational counseling.",
+    "Younger Patient":        "Patients aged 18–44 in this dataset showed higher perceived medication burden despite lower comorbidity burdens. Provide targeted health literacy education, digital adherence tools (apps, pill reminders), and motivational counseling.",
 }
 
 
 # ── PDF REPORT GENERATOR ──────────────────────────────────────────
-def generate_pdf_report(patient_name, date_str, tier, pct, raw, raw_display,
+def generate_pdf_report(patient_name, date_str, model_name, model_summary,
+                        tier, pct, raw, raw_display,
                         pos_factors, neg_factors, recs_list, year_born, age,
                         num_rx, num_otc, num_herbal, num_health, rate_health,
                         hosp, fin_hardship, transport, side_effects,
@@ -300,7 +325,7 @@ def generate_pdf_report(patient_name, date_str, tier, pct, raw, raw_display,
     # HEADER
     header_table = Table([[
         Paragraph('<b>PharmAssist</b>', S['title']),
-        Paragraph('Medication Management Difficulty Risk Report', S['sub']),
+        Paragraph('Medication Burden Risk Report', S['sub']),
     ]], colWidths=[2.5*inch, 4.7*inch])
     header_table.setStyle(TableStyle([
         ('BACKGROUND',(0,0),(-1,-1),DARK_BLUE),('VALIGN',(0,0),(-1,-1),'MIDDLE'),
@@ -315,9 +340,11 @@ def generate_pdf_report(patient_name, date_str, tier, pct, raw, raw_display,
         [Paragraph('<b>Patient:</b>', S['small']), Paragraph(patient_name, S['small']),
          Paragraph('<b>Date:</b>', S['small']),    Paragraph(date_str, S['small'])],
         [Paragraph('<b>Model:</b>', S['small']),
-         Paragraph('Logistic Regression (Recall=81.0%, ROC-AUC=0.867)', S['small']),
+         Paragraph(model_summary, S['small']),
          Paragraph('<b>Dataset:</b>', S['small']),
          Paragraph('2021 NCSME Survey (N=1,521)', S['small'])],
+        [Paragraph('<b>Outcome:</b>', S['small']), Paragraph('Medication Burden (binarized at 80th percentile)', S['small']),
+         Paragraph('<b>Calibration:</b>', S['small']), Paragraph(f"Binarized at {OUTCOME_THRESHOLD_PERCENTILE}th percentile", S['small'])]
     ], colWidths=[0.85*inch, 2.8*inch, 0.75*inch, 2.8*inch])
     meta_t.setStyle(TableStyle([
         ('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#F0F4F8')),
@@ -333,7 +360,7 @@ def generate_pdf_report(patient_name, date_str, tier, pct, raw, raw_display,
     risk_t = Table([
         [Paragraph(f'<b>{tier}</b>', S['risk_lbl']),
          Paragraph(f'<b>{pct:.1f}%</b>', S['risk_pct'])],
-        [Paragraph('MEDICATION MANAGEMENT DIFFICULTY RISK PROBABILITY', S['risk_sub']),
+        [Paragraph('MEDICATION BURDEN RISK PROBABILITY', S['risk_sub']),
          Paragraph(f'Sample Average: {AVG_RISK_PCT}%',
                    ParagraphStyle('rsub2r',fontSize=7.5,textColor=colors.HexColor('#E8F4FD'),
                                   fontName='Helvetica',alignment=TA_RIGHT))],
@@ -368,8 +395,8 @@ def generate_pdf_report(patient_name, date_str, tier, pct, raw, raw_display,
          MOD_ORANGE if rural==0 else LOW_GREEN, False),
     ]
     cmp_labels = [
-        ('Risk Classification',       tier,                             'Based on >=50% threshold'),
-        ('Probability of Difficulty',  f'{pct:.1f}%',                  f'{AVG_RISK_PCT}%'),
+        ('Risk Classification',       tier,                             f'Based on ≥{int(CLASSIFIER_DECISION_THRESHOLD*100)}% probability'),
+        ('Probability of Burden',  f'{pct:.1f}%',                  f'{AVG_RISK_PCT}%'),
         ('Total Daily Medications',    str(total_meds),                  '4.2 (sample mean)'),
         ('Barrier Score (3-21)',       str(barrier_score),               '7.1 (sample mean)'),
         ('Support Score (2-14)',       str(support_score),               '8.4 (sample mean)'),
@@ -538,13 +565,13 @@ def generate_pdf_report(patient_name, date_str, tier, pct, raw, raw_display,
 
     # DISCLAIMER
     disc_text = (
-        '<b>DISCLAIMER:</b> The PharmAssist Medication Management Difficulty Risk Screener '
+        '<b>DISCLAIMER:</b> The PharmAssist Medication Burden Risk Screener '
         'estimates the likelihood that a patient will experience difficulty using medications '
-        'as instructed, based on self-reported data. The risk estimate is derived from a logistic '
-        'regression model trained on 1,521 respondents of the 2021 National Community Survey on '
+        'as instructed, based on self-reported data. The risk estimate is derived from the selected '
+        'machine learning model trained on 1,521 respondents of the 2021 National Community Survey on '
         'Medication Experiences (NCSME). <b>This tool is intended for clinical screening purposes '
-        'only and is NOT a diagnostic instrument.</b> The model has a Recall of 81.0%, meaning '
-        'approximately 19% of truly High Risk patients may not be identified. Results should be '
+        'only and is NOT a diagnostic instrument.</b> Model performance varies by selection, and '
+        'test metrics should be interpreted before clinical use. Results should be '
         'interpreted by a qualified pharmacist or licensed clinician in the context of the '
         "patient's full clinical history. Estimates are not a guarantee of outcomes. PharmAssist "
         'should not replace clinical judgment. The information in this report is privileged '
@@ -572,23 +599,25 @@ st.markdown(
     '<div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.15);border:1.5px solid rgba(255,255,255,0.3);display:flex;align-items:center;justify-content:center;font-size:1.25rem;flex-shrink:0;">&#128138;</div>'
     '<div>'
     '<div style="color:#fff;font-size:1.25rem;font-weight:800;letter-spacing:0.2px;line-height:1.15;margin:0;">PharmAssist</div>'
-    '<div style="color:rgba(255,255,255,0.72);font-size:0.76rem;font-weight:400;margin-top:1px;">Medication Management Difficulty Risk Screener</div>'
+    '<div style="color:rgba(255,255,255,0.72);font-size:0.76rem;font-weight:400;margin-top:1px;">Medication Burden Risk Screener</div>'
     '</div></div>'
     '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">'
-    '<span style="background:rgba(255,255,255,0.13);color:rgba(255,255,255,0.93);border:1px solid rgba(255,255,255,0.28);border-radius:20px;padding:3px 10px;font-size:0.67rem;font-weight:600;white-space:nowrap;">Recall 81.0%</span>'
-    '<span style="background:rgba(255,255,255,0.13);color:rgba(255,255,255,0.93);border:1px solid rgba(255,255,255,0.28);border-radius:20px;padding:3px 10px;font-size:0.67rem;font-weight:600;white-space:nowrap;">ROC-AUC 0.867</span>'
+    '<span style="background:rgba(255,255,255,0.13);color:rgba(255,255,255,0.93);border:1px solid rgba(255,255,255,0.28);border-radius:20px;padding:3px 10px;font-size:0.67rem;font-weight:600;white-space:nowrap;">Model selected at runtime</span>'
     '<span style="background:rgba(255,255,255,0.13);color:rgba(255,255,255,0.93);border:1px solid rgba(255,255,255,0.28);border-radius:20px;padding:3px 10px;font-size:0.67rem;font-weight:600;white-space:nowrap;">N = 1,521</span>'
     '</div></div>'
     '<div style="background:#EBF3FB;border-top:1px solid #C8DDEF;padding:5px 22px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;">'
     '<span style="font-size:0.70rem;color:#1F4E79;font-weight:500;">&#9679; 2021 NCSME Survey</span>'
-    '<span style="font-size:0.70rem;color:#1F4E79;font-weight:500;">&#9679; Logistic Regression</span>'
-    '<span style="font-size:0.70rem;color:#1F4E79;font-weight:500;">&#9679; 19 Predictors</span>'
+    '<span style="font-size:0.70rem;color:#1F4E79;font-weight:500;">&#9679; SVM / Logistic Regression</span>'
+    '<span style="font-size:0.70rem;color:#1F4E79;font-weight:500;">&#9679; 16 Predictors</span>'
     '</div></div>',
     unsafe_allow_html=True
 )
 
-if not model_loaded:
-    st.error("⚠️ **Model files not found!** Run in your notebook: `joblib.dump(lr_best,'lr_model.pkl')` and `joblib.dump(scaler,'scaler.pkl')`")
+if not pipelines_loaded:
+    st.error(
+        "⚠️ **Model files not found!** Missing: " + ", ".join(missing_files) + "."
+        " Ensure the pipeline files exist in the app folder, e.g. `lr_pipeline.pkl` and `svm_pipeline.pkl`."
+    )
     st.stop()
 
 # ── 4-COLUMN LAYOUT ───────────────────────────────────────────────
@@ -647,6 +676,13 @@ with c3:
     patient_name = st.text_input("Patient Name / ID (optional)",
                                   placeholder="e.g. Patient #1042")
 
+    selected_model = st.selectbox(
+        "Select model",
+        list(MODEL_INFO.keys()),
+        index=0,
+        help="Choose the model used for the current risk estimate."
+    )
+
     st.markdown("<br>", unsafe_allow_html=True)
     assess = st.button("  Assess Patient Risk", use_container_width=True)
 
@@ -686,15 +722,28 @@ with c4:
         raw_display['HospLastYear'] = 'Yes' if hosp == 1 else 'No'
         raw_display['RuralUrban']   = 'Urban' if rural == 1 else 'Rural'
         raw_display['Age']          = f"{age} (born {year_born})"
-        X_df     = pd.DataFrame([raw])[PREDICTORS]
-        X_sc     = scaler.transform(X_df)
-        prob     = model.predict_proba(X_sc)[0][1]
-        pct      = prob * 100
-        coefs    = model.coef_[0]
+        X_df = pd.DataFrame([raw])[PREDICTORS]
 
-        if prob >= 0.50:
+        pipeline = pipelines[selected_model]
+        clf = pipeline.named_steps['clf']
+        prob = pipeline.predict_proba(X_df)[0][1]
+        pct = prob * 100
+
+        if hasattr(clf, 'coef_'):
+            X_sc = pipeline.named_steps['scale'].transform(X_df)
+            coefs = clf.coef_[0]
+            contribs = {f: float(X_sc[0][i] * coefs[i]) for i, f in enumerate(PREDICTORS)}
+            pos = sorted([(f, c) for f, c in contribs.items() if c > 0], key=lambda x: -x[1])[:3]
+            neg = sorted([(f, c) for f, c in contribs.items() if c < 0], key=lambda x: x[1])[:2]
+        else:
+            X_sc = pipeline.named_steps['scale'].transform(X_df)
+            contribs = {f: float(X_sc[0][i]) for i, f in enumerate(PREDICTORS)}
+            pos = sorted(contribs.items(), key=lambda x: -x[1])[:3]
+            neg = sorted(contribs.items(), key=lambda x: x[1])[:2]
+
+        if prob >= CLASSIFIER_DECISION_THRESHOLD:
             tier, cls, emoji = "HIGH RISK",     "risk-high",     "🔴"
-        elif prob >= 0.30:
+        elif prob >= MODERATE_RISK_THRESHOLD:
             tier, cls, emoji = "MODERATE RISK", "risk-moderate", "🟠"
         else:
             tier, cls, emoji = "LOW RISK",      "risk-low",      "🟢"
@@ -706,7 +755,7 @@ with c4:
             <span class="risk-emoji">{emoji}</span>
             <div>
               <div class="risk-label">{tier}</div>
-              <div class="risk-sub">MEDICATION DIFFICULTY RISK</div>
+              <div class="risk-sub">MEDICATION BURDEN RISK</div>
             </div>
           </div>
           <div class="risk-pct">{pct:.1f}%</div>
@@ -716,11 +765,8 @@ with c4:
         st.progress(int(prob * 100))
 
         # ── TOP FACTORS (compact single-line rows) ────────────────
-        contribs = {f: float(X_sc[0][i] * coefs[i]) for i, f in enumerate(PREDICTORS)}
-        pos = sorted([(f,c) for f,c in contribs.items() if c>0], key=lambda x:-x[1])[:3]
-        neg = sorted([(f,c) for f,c in contribs.items() if c<0], key=lambda x:x[1])[:2]
-        max_pos = max((abs(c) for _,c in pos), default=1)
-        max_neg = max((abs(c) for _,c in neg), default=1)
+        max_pos = max((abs(c) for _, c in pos), default=1)
+        max_neg = max((abs(c) for _, c in neg), default=1)
 
         st.markdown('<div class="sec-label">🔍 Key Risk Factors</div>', unsafe_allow_html=True)
         for feat, contrib in pos:
@@ -785,9 +831,16 @@ with c4:
         if age < 45:           recs_list.append("Younger Patient — health literacy education")
 
         # Generate PDF
+        model_label = selected_model.replace('LogisticRegression', 'Logistic Regression')
+        model_info = MODEL_INFO.get(selected_model, {})
+        model_summary = model_label
+        if model_info.get('test_recall') is not None and model_info.get('test_roc_auc') is not None:
+            model_summary = f"{model_label} (Recall={model_info['test_recall']:.1%}, ROC-AUC={model_info['test_roc_auc']:.3f})"
+
         pdf_bytes = generate_pdf_report(
-            patient_name=name_str, date_str=date_str, tier=tier,
-            pct=pct, raw=raw, raw_display=raw_display,
+            patient_name=name_str, date_str=date_str,
+            model_name=model_label, model_summary=model_summary,
+            tier=tier, pct=pct, raw=raw, raw_display=raw_display,
             pos_factors=pos, neg_factors=neg,
             recs_list=recs_list, year_born=year_born, age=age,
             num_rx=num_rx, num_otc=num_otc, num_herbal=num_herbal,
@@ -820,7 +873,7 @@ with c4:
             email_subject = urllib.parse.quote(
                 f"PharmAssist Risk Report — {name_str} — {tier}")
             email_body = urllib.parse.quote(
-                f"PharmAssist — Medication Management Difficulty Risk Report\n"
+                f"PharmAssist — Medication Burden Risk Report\n"
                 f"{'='*55}\n"
                 f"Patient:         {name_str}\n"
                 f"Date:            {date_str}\n"

@@ -1,0 +1,40 @@
+{
+  "feature_names": [
+    "NumRx",
+    "NumOTC",
+    "NumHerbal",
+    "Total_Meds",
+    "NumHealthProb",
+    "RateHealth",
+    "HospLastYear",
+    "Fin_Hardship",
+    "Transport",
+    "Side_Effects",
+    "Social_Support",
+    "Fam_Friend",
+    "Age",
+    "Education",
+    "HouseIncome",
+    "RuralUrban"
+  ],
+  "n_features": 16,
+  "training_n": 1216,
+  "test_n": 305,
+  "total_n": 1521,
+  "class_imbalance_ratio": 3.282,
+  "outcome_threshold_percentile": 80,
+  "classification_threshold": 0.50,
+  "moderate_risk_threshold": 0.30,
+  "models": {
+    "SVM": {
+      "file": "svm_pipeline.pkl",
+      "test_recall": 0.662,
+      "test_roc_auc": 0.7767
+    },
+    "LogisticRegression": {
+      "file": "lr_pipeline.pkl",
+      "test_recall": 0.6338,
+      "test_roc_auc": 0.771
+    }
+  }
+}
