@@ -11,7 +11,6 @@ import joblib
 from datetime import datetime
 import io
 import urllib.parse
-from pathlib import Path
 
 # ReportLab for PDF generation
 from reportlab.lib.pagesizes import letter
@@ -24,7 +23,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
 # ── PAGE CONFIG ───────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Medication Burden Risk Screener",
+    page_title="PharmAssist — Medication Risk Screener",
     page_icon="💊",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -148,8 +147,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── MODEL METADATA ─────────────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent
-MODEL_METADATA_FILE = BASE_DIR / 'model_metadata.json'
+MODEL_METADATA_FILE = 'model_metadata.json'
 
 @st.cache_data
 def load_metadata():
@@ -168,17 +166,12 @@ PREDICTORS = metadata.get('feature_names', [
 ])
 
 MODEL_INFO = metadata.get('models', {
-    'LogisticRegression': {'file': 'lr_pipeline.pkl', 'test_recall': None, 'test_roc_auc': None},
-    'SVM': {'file': 'svm_pipeline.pkl', 'test_recall': None, 'test_roc_auc': None}
+    'LogisticRegression': {'file': 'lr_pipeline.pkl', 'test_recall': None, 'test_roc_auc': None}
 })
 
 OUTCOME_THRESHOLD_PERCENTILE = metadata.get('outcome_threshold_percentile', 80)
 CLASSIFIER_DECISION_THRESHOLD = metadata.get('classification_threshold', 0.50)
 MODERATE_RISK_THRESHOLD = metadata.get('moderate_risk_threshold', 0.30)
-
-def resolve_model_path(model_file):
-    path = Path(model_file)
-    return path if path.is_absolute() else BASE_DIR / path
 
 @st.cache_resource
 def load_pipelines():
@@ -186,12 +179,11 @@ def load_pipelines():
     loaded = True
     missing = []
     for name, info in MODEL_INFO.items():
-        model_path = resolve_model_path(info['file'])
         try:
-            pipelines[name] = joblib.load(model_path)
+            pipelines[name] = joblib.load(info['file'])
         except FileNotFoundError:
             loaded = False
-            missing.append(str(model_path))
+            missing.append(info['file'])
     return pipelines, loaded, missing
 
 pipelines, pipelines_loaded, missing_files = load_pipelines()
@@ -331,7 +323,7 @@ def generate_pdf_report(patient_name, date_str, model_name, model_summary,
 
     # HEADER
     header_table = Table([[
-        Paragraph('<b>Medication Burden</b>', S['title']),
+        Paragraph('<b>PharmAssist</b>', S['title']),
         Paragraph('Medication Burden Risk Report', S['sub']),
     ]], colWidths=[2.5*inch, 4.7*inch])
     header_table.setStyle(TableStyle([
@@ -609,13 +601,13 @@ st.markdown(
     '<div style="color:rgba(255,255,255,0.72);font-size:0.76rem;font-weight:400;margin-top:1px;">Medication Burden Risk Screener</div>'
     '</div></div>'
     '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">'
-    '<span style="background:rgba(255,255,255,0.13);color:rgba(255,255,255,0.93);border:1px solid rgba(255,255,255,0.28);border-radius:20px;padding:3px 10px;font-size:0.67rem;font-weight:600;white-space:nowrap;">Model selected at runtime</span>'
+    '<span style="background:rgba(255,255,255,0.13);color:rgba(255,255,255,0.93);border:1px solid rgba(255,255,255,0.28);border-radius:20px;padding:3px 10px;font-size:0.67rem;font-weight:600;white-space:nowrap;">Deployment fixed to Logistic Regression</span>'
     '<span style="background:rgba(255,255,255,0.13);color:rgba(255,255,255,0.93);border:1px solid rgba(255,255,255,0.28);border-radius:20px;padding:3px 10px;font-size:0.67rem;font-weight:600;white-space:nowrap;">N = 1,521</span>'
     '</div></div>'
     '<div style="background:#EBF3FB;border-top:1px solid #C8DDEF;padding:5px 22px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;">'
     '<span style="font-size:0.70rem;color:#1F4E79;font-weight:500;">&#9679; 2021 NCSME Survey</span>'
-    '<span style="font-size:0.70rem;color:#1F4E79;font-weight:500;">&#9679; SVM / Logistic Regression</span>'
-    '<span style="font-size:0.70rem;color:#1F4E79;font-weight:500;">&#9679; 16 Predictors</span>'
+    '<span style="font-size:0.70rem;color:#1F4E79;font-weight:500;">&#9679; Deployed model: Logistic Regression</span>'
+    '<span style="font-size:0.70rem;color:#1F4E79;font-weight:500;">&#9679; 15 Predictors</span>'
     '</div></div>',
     unsafe_allow_html=True
 )
@@ -623,7 +615,7 @@ st.markdown(
 if not pipelines_loaded:
     st.error(
         "⚠️ **Model files not found!** Missing: " + ", ".join(missing_files) + "."
-        " Ensure the pipeline files exist in the app folder, e.g. `lr_pipeline.pkl` and `svm_pipeline.pkl`."
+        " Ensure the pipeline file exists in the app folder, e.g. `lr_pipeline.pkl`."
     )
     st.stop()
 
@@ -691,9 +683,7 @@ with c3:
     model_summary = model_label
     if model_info.get('test_recall') is not None and model_info.get('test_roc_auc') is not None:
         model_summary = f"{model_label} (Recall={model_info['test_recall']:.1%}, ROC-AUC={model_info['test_roc_auc']:.3f})"
-
     st.info(f"Deployment model: {model_summary}")
-    st.caption("This version is configured to match the revised manuscript deployment for the logistic regression model.")
 
     st.markdown("<br>", unsafe_allow_html=True)
     assess = st.button("  Assess Patient Risk", use_container_width=True)
@@ -864,24 +854,13 @@ with c4:
             support_score=support_score, health_score=health_score
         )
 
-        st.markdown('<div class="sec-label">� Logistic Regression Performance</div>', unsafe_allow_html=True)
-        col_perf1, col_perf2 = st.columns(2)
-        with col_perf1:
-            st.metric("Recall", f"{model_info.get('test_recall', 0):.1%}")
-        with col_perf2:
-            st.metric("ROC-AUC", f"{model_info.get('test_roc_auc', 0):.3f}")
-        if (BASE_DIR / 'fig5_roc_auc_curves.png').exists():
-            st.image(str(BASE_DIR / 'fig5_roc_auc_curves.png'), caption='ROC curve for the deployed logistic regression model', use_container_width=True)
-        if (BASE_DIR / 'fig6_precision_recall_curves.png').exists():
-            st.image(str(BASE_DIR / 'fig6_precision_recall_curves.png'), caption='Precision-recall curve for the deployed logistic regression model', use_container_width=True)
-
-        st.markdown('<div class="sec-label">�📄 Report & Communication</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-label">📄 Report & Communication</div>', unsafe_allow_html=True)
 
         # PDF Download
         st.download_button(
             label     = "⬇️  Download Clinical PDF Report",
             data      = pdf_bytes,
-            file_name = f"Medication_Burden_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            file_name = f"PharmAssist_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
             mime      = "application/pdf",
             use_container_width=True,
             help="Full 2-page clinical report with definitions, risk comparison, and recommendations"
@@ -896,7 +875,7 @@ with c4:
             email_subject = urllib.parse.quote(
                 f"PharmAssist Risk Report — {name_str} — {tier}")
             email_body = urllib.parse.quote(
-                f"Medication Burden Risk Report\n"
+                f"PharmAssist — Medication Burden Risk Report\n"
                 f"{'='*55}\n"
                 f"Patient:         {name_str}\n"
                 f"Date:            {date_str}\n"
@@ -912,11 +891,11 @@ with c4:
                 + f"\n\n"
                 f"{'='*55}\n"
                 f"DISCLAIMER: This is a clinical screening tool only.\n"
-                f"Not a diagnostic instrument. Recall={model_info.get('test_recall', 0):.1%}, ROC-AUC={model_info.get('test_roc_auc', 0):.3f}.\n"
+                f"Not a diagnostic instrument. Recall=81.0%, ROC-AUC=0.867.\n"
                 f"Results must be interpreted by a qualified pharmacist.\n"
                 f"Based on 2021 NCSME Survey (N=1,521).\n"
                 f"{'='*55}\n\n"
-                f"Please download and attach the full PDF report from Medication Burden Risk Screener."
+                f"Please download and attach the full PDF report from PharmAssist."
             )
             mailto_link = f"mailto:{recipient_email}?subject={email_subject}&body={email_body}"
             st.markdown(
@@ -937,8 +916,8 @@ with c4:
 
         st.markdown("""
         <div class="disclaimer">
-        ⚠️ <strong>Clinical Disclaimer:</strong> Medication Burden Risk Screener is a research-based screening tool
-        (2021 NCSME, N=1,521). Recall={model_info.get('test_recall', 0):.1%} — about {100*(1-model_info.get('test_recall', 0)):.1f}% of high-risk patients may still be missed.
+        ⚠️ <strong>Clinical Disclaimer:</strong> PharmAssist is a research-based screening tool
+        (2021 NCSME, N=1,521). Recall=81% — ~19% of High Risk patients may not be identified.
         Not a substitute for clinical judgment. Results must be interpreted by a qualified pharmacist.
         </div>
         """, unsafe_allow_html=True)

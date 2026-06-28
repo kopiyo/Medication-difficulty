@@ -3,7 +3,6 @@
     "NumRx",
     "NumOTC",
     "NumHerbal",
-    "Total_Meds",
     "NumHealthProb",
     "RateHealth",
     "HospLastYear",
@@ -17,7 +16,7 @@
     "HouseIncome",
     "RuralUrban"
   ],
-  "n_features": 16,
+  "n_features": 15,
   "training_n": 1216,
   "test_n": 305,
   "total_n": 1521,
@@ -26,11 +25,6 @@
   "classification_threshold": 0.50,
   "moderate_risk_threshold": 0.30,
   "models": {
-    "SVM": {
-      "file": "svm_pipeline.pkl",
-      "test_recall": 0.5,
-      "test_roc_auc": 0.7667
-    },
     "LogisticRegression": {
       "file": "lr_pipeline.pkl",
       "test_recall": 0.8103,
