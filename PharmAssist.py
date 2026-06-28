@@ -195,7 +195,7 @@ LABEL_MAP = {
     'Side_Effects':'Side Effects','Social_Support':'Social Support',
     'Fam_Friend':'Family/Friend Reliance','Age':'Age',
     'Education':'Education','HouseIncome':'Household Income',
-    'RuralUrban':'Geographic Area','Total_Meds':'Total Medication Burden',
+    'RuralUrban':'Geographic Area',
     'Barrier_Score':'Combined Barrier Score','Support_Score':'Combined Support Score',
     'Health_Score':'Combined Health Score',
 }
@@ -306,11 +306,7 @@ def generate_pdf_report(patient_name, date_str, model_name, model_summary,
         'Side_Effects':'Side Effects','Social_Support':'Social Support',
         'Fam_Friend':'Family/Friend Reliance','Age':'Age',
         'Education':'Education','HouseIncome':'Household Income',
-        'RuralUrban':'Geographic Area','Total_Meds':'Total Medication Burden',
-        'Barrier_Score':'Combined Barrier Score','Support_Score':'Combined Support Score',
-        'Health_Score':'Combined Health Score',
-    }
-
+    'RuralUrban':'Geographic Area',
     rate_health_labels = {1:"Excellent",2:"Good",3:"Fair",4:"Poor"}
     edu_full = {1:"High School/GED",2:"Some College",3:"Associate Degree",
                 4:"Bachelor's Degree",5:"Master's Degree",
@@ -631,7 +627,7 @@ with c1:
     num_otc    = st.number_input("OTC Medications",     0, 10, 1, help="Daily OTC medications")
     num_herbal = st.number_input("Herbal Supplements",  0, 10, 0, help="Daily herbal supplements")
     total_meds_ui = num_rx + num_otc + num_herbal
-    st.metric("Total Daily Medications", total_meds_ui)
+    st.markdown(f"**Total Daily Medications:** {total_meds_ui}")
 
     st.markdown('<div class="sec-label"> Health Burden</div>', unsafe_allow_html=True)
     num_health  = st.number_input("No. of Health Problems", 0, 15, 2)
@@ -716,7 +712,7 @@ with c4:
             'Fin_Hardship':fin_hardship,'Transport':transport,'Side_Effects':side_effects,
             'Social_Support':social_support,'Fam_Friend':fam_friend,
             'Age':age,'Education':education,'HouseIncome':income,'RuralUrban':rural,
-            'Total_Meds':total_meds,'Barrier_Score':barrier_score,
+            'Barrier_Score':barrier_score,
             'Support_Score':support_score,'Health_Score':health_score,
         }
         # Display-friendly labels for factor cards
