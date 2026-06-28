@@ -160,7 +160,7 @@ def load_metadata():
 metadata = load_metadata() or {}
 
 PREDICTORS = metadata.get('feature_names', [
-    'NumRx','NumOTC','NumHerbal','Total_Meds','NumHealthProb','RateHealth','HospLastYear',
+    'NumRx','NumOTC','NumHerbal','NumHealthProb','RateHealth','HospLastYear',
     'Fin_Hardship','Transport','Side_Effects','Social_Support','Fam_Friend',
     'Age','Education','HouseIncome','RuralUrban'
 ])
@@ -604,7 +604,7 @@ st.markdown(
     '<div style="background:#EBF3FB;border-top:1px solid #C8DDEF;padding:5px 22px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;">'
     '<span style="font-size:0.70rem;color:#1F4E79;font-weight:500;">&#9679; 2021 NCSME Survey</span>'
     '<span style="font-size:0.70rem;color:#1F4E79;font-weight:500;">&#9679; Deployed model: Logistic Regression</span>'
-    '<span style="font-size:0.70rem;color:#1F4E79;font-weight:500;">&#9679; 16 Predictors</span>'
+    '<span style="font-size:0.70rem;color:#1F4E79;font-weight:500;">&#9679; 15 Predictors</span>'
     '</div></div>',
     unsafe_allow_html=True
 )
