@@ -306,7 +306,8 @@ def generate_pdf_report(patient_name, date_str, model_name, model_summary,
         'Side_Effects':'Side Effects','Social_Support':'Social Support',
         'Fam_Friend':'Family/Friend Reliance','Age':'Age',
         'Education':'Education','HouseIncome':'Household Income',
-    'RuralUrban':'Geographic Area',
+        'RuralUrban':'Geographic Area',
+    }
     rate_health_labels = {1:"Excellent",2:"Good",3:"Fair",4:"Poor"}
     edu_full = {1:"High School/GED",2:"Some College",3:"Associate Degree",
                 4:"Bachelor's Degree",5:"Master's Degree",
