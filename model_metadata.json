@@ -3,6 +3,7 @@
     "NumRx",
     "NumOTC",
     "NumHerbal",
+    "Total_Meds",
     "NumHealthProb",
     "RateHealth",
     "HospLastYear",
@@ -16,7 +17,7 @@
     "HouseIncome",
     "RuralUrban"
   ],
-  "n_features": 15,
+  "n_features": 16,
   "training_n": 1216,
   "test_n": 305,
   "total_n": 1521,
