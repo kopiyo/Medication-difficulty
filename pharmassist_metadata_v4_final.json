@@ -1,0 +1,79 @@
+{
+  "model_name": "LogisticRegression",
+  "version": "v4_final",
+  "dataset": "NCSME 2021",
+  "n_train": 1216,
+  "n_test": 305,
+  "features": [
+    "NumRx",
+    "NumOTC",
+    "NumHerbal",
+    "NumHealthProb",
+    "RateHealth",
+    "HospLastYear",
+    "Fin_Hardship",
+    "Transport",
+    "Side_Effects",
+    "Social_Support",
+    "Fam_Friend",
+    "Age",
+    "Education",
+    "HouseIncome",
+    "RuralUrban"
+  ],
+  "n_features": 15,
+  "excluded_features": [
+    "Total_Meds"
+  ],
+  "exclusion_reason": "Cronbach alpha=0.405 < 0.70; decomposed in Phase 3.2",
+  "outcome": "Med_Burden_Binary (1=high burden, 0=low burden)",
+  "outcome_threshold": "80th percentile of Med_Burden composite (score >= 17)",
+  "classification_cutoff": 0.5,
+  "held_out_metrics": {
+    "recall": 0.634,
+    "roc_auc": 0.769,
+    "precision": 0.441,
+    "f1": 0.52,
+    "accuracy": 0.728,
+    "brier_uncalibrated": 0.181,
+    "brier_post_isotonic": 0.184
+  },
+  "cv_metrics": {
+    "roc_auc_mean": 0.804,
+    "roc_auc_std": 0.009,
+    "recall_mean": 0.744,
+    "recall_std": 0.015
+  },
+  "top_predictors": {
+    "Fam_Friend": {
+      "OR": 1.774,
+      "coef": 0.573
+    },
+    "Fin_Hardship": {
+      "OR": 1.765,
+      "coef": 0.568
+    },
+    "Side_Effects": {
+      "OR": 1.658,
+      "coef": 0.506
+    },
+    "NumHerbal": {
+      "OR": 1.124,
+      "coef": 0.117
+    },
+    "Social_Support": {
+      "OR": 0.715,
+      "coef": -0.335
+    }
+  },
+  "deployment_instructions": {
+    "step_1": "Load scaler: scaler = joblib.load(\"pharmassist_lr_scaler_v4_final.pkl\")",
+    "step_2": "Load model: model = joblib.load(\"pharmassist_lr_calibrated_v4_final.pkl\")",
+    "step_3": "Load features: features = json.load(open(\"pharmassist_features_v4_final.json\"))",
+    "step_4": "Prepare input: X = pd.DataFrame([user_input], columns=features)",
+    "step_5": "Scale: X_scaled = scaler.transform(X)",
+    "step_6": "Predict probability: prob = model.predict_proba(X_scaled)[:, 1][0]",
+    "step_7": "Classify: label = \"High burden\" if prob >= 0.5 else \"Low burden\"",
+    "warning": "Do NOT include Total_Meds \u2014 it is not in the feature list"
+  }
+}
